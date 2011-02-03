@@ -1,0 +1,4 @@
+In future we would like to implement the following features to convert-non-suexec.sh:
+  1. Create backups of the existing .htaccess files
+  2. Run the script per user instead of the whole machine
+
