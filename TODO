@@ -1,6 +1,5 @@
-In future we would like to implement the following features to convert-non-suexec.sh:
-  1. Create backups of the existing .htaccess files
-  2. Run the script per user instead of the whole machine
-  3. Skip a home folder if the folder has /home/USER/.converted-to-suexec. 
-     But if the file is older then 24hours check the user anyway.
+- DONE - Create backups of the existing .htaccess files
+- DONE - Run the script per user instead of the whole machine
+- DONE - Skip a home folder if the folder has /home/USER/.converted-to-suexec
+- DONE - But if the file is older then 24hours check the user anyway
 

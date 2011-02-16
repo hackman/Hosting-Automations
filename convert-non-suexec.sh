@@ -18,7 +18,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 
-VERSION='1.0.1'
+VERSION='1.0.3'
 
 function usage () {
 	echo "Use: $0 [fix|revert] [username|all]"
@@ -45,7 +45,20 @@ fi
 
 action="$1"
 user="$2"
-changes_storage='converted.by.1h'
+changes_storage='.converted-to-suexec'
+
+function htaccess_backup {
+	access_file="$1"
+	backup_suffix='.before-suexec'
+	# If the backup exists we just return
+	if [ -f "${access_file}${backup_suffix}" ]; then
+		return 1
+	fi
+	if ( ! cp -a "${access_file}" "${access_file}${backup_suffix}" ); then
+		return 0
+	fi
+	return 1
+}
 
 function revert_changes {
 	if [ ! -x /home/$1/$changes_storage ]; then
@@ -59,26 +72,38 @@ function revert_changes {
 function do_changes {
 	do_user="$1"
 	target_file="/home/$do_user/$changes_storage"
+	if [ -f $target_file ] && ( ! test `find $target_file -mmin +1440` ); then
+		echo "$do_user was converted less than 24 hours ago so I will skip this user"
+		return 1
+	fi
 
 	# Find all .htaccess files in this client's directory and start working on them
 	for htaccess in $(find /home/$do_user/ -name .htaccess); do
 		# Find all lines with ForceType application.* and append addhandler beneath them
 		if ( grep -v \# ${htaccess} | grep -i 'ForceType application/x-httpd-php' >> /dev/null 2>&1 ); then
+			# We got match and we will manipulate the .htaccess so we just backup it first
+			htaccess_backup ${htaccess}
 			sed -i '/[Ff][Oo][Rr][Cc][Ee][Tt][Yy][Pp][Ee]/aAddHandler application/x-httpd-php .php .php5 .php4 .php3' "${htaccess}"
 			echo "sed -i '/AddHandler application/D' ${htaccess}" >> $target_file
 		fi
 		# Comment out all lines with suPHP_ConfigPath
 		if ( grep -v \# ${htaccess} | grep -i 'suPHP_ConfigPath' >> /dev/null 2>&1 ); then
+			# We got match and we will manipulate the .htaccess so we just backup it first
+			htaccess_backup ${htaccess}
 			sed -i '/[Ss][Uu][Pp][Hh][Pp]_[Cc][Oo][Nn][Ff][Ii][Gg][Pp][Aa][Tt][Hh]/s/\(^.*$\)/# \1/' "${htaccess}"
 			echo "sed -i '/[Ss][Uu][Pp][Hh][Pp]_[Cc][Oo][Nn][Ff][Ii][Gg][Pp][Aa][Tt][Hh]/s/#//g' $htaccess" >> $target_file
 		fi
 		# Append '+ExecCGI' to all lines which contains Options 
 		if ( grep -i 'Options' ${htaccess} >> /dev/null 2>&1 ) && ( ! grep ExecCGI ${htaccess} >> /dev/null 2>&1 ); then
+			# We got match and we will manipulate the .htaccess so we just backup it first
+			htaccess_backup ${htaccess}
 			sed -i "/Options/s/$/ +ExecCGI/" "${htaccess}"
 			echo "sed -i '/Options/s/ +ExecCGI//' $htaccess" >> $target_file
 		fi
 		
 		if ( grep -v \# ${htaccess} | grep -Ei 'php_flag|php_value' >> /dev/null 2>&1 ); then
+			# We got match and we will manipulate the .htaccess so we just backup it first
+			htaccess_backup ${htaccess}
 			php_ini_values=$(grep -Ei 'php_flag|php_value' ${htaccess} | awk '{print $2, "=" ,$3}')
 			# Comment out all php_flags and php_values in this .htaccess
 			sed -i '/\([pP][Hh][Pp]_[Ff][Ll][Aa][Gg]\|[Pp][Hh][Pp]_[Vv][Aa][Ll][Uu][Ee]\)/s/\(^.*$\)/# \1/i' ${htaccess}
@@ -116,6 +141,12 @@ function do_changes {
 		# Write down the revert process
 		echo "chmod 777 \"${path}\"" >> $target_file
 	done
+
+	touch $target_file
+	if [ -f $target_file ]; then
+		# We did some changes so we should mark target_file as executable
+		chmod +x $target_file
+	fi
 }
 
 case "$action" in
